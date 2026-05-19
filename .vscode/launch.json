@@ -1,0 +1,44 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:MyApp}",
+            "name": "Debug MyApp",
+            "target": "MyApp",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug MyApp"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:MyApp}",
+            "name": "Release MyApp",
+            "target": "MyApp",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release MyApp"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:myTunes}",
+            "name": "Debug myTunes",
+            "target": "myTunes",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug myTunes"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:myTunes}",
+            "name": "Release myTunes",
+            "target": "myTunes",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release myTunes"
+        }
+    ]
+}
