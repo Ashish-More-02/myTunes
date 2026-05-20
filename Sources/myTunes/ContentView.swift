@@ -24,6 +24,7 @@ struct ContentView: View {
     @AppStorage("colorScheme") private var colorSchemeRaw: String = "dark"
     @State private var nav: NavItem = .library
     @State private var keyMonitor: Any?
+    @State private var mouseMonitor: Any?
 
     private var scheme: ColorScheme {
         colorSchemeRaw == "light" ? .light : .dark
@@ -58,30 +59,63 @@ struct ContentView: View {
         .background(Theme.background(scheme))
         .preferredColorScheme(scheme)
         .frame(minWidth: 1200, minHeight: 820)
-        .onAppear { installKeyMonitor() }
-        .onDisappear { removeKeyMonitor() }
+        .onAppear { installEventMonitors() }
+        .onDisappear { removeEventMonitors() }
     }
 
-    private func installKeyMonitor() {
-        guard keyMonitor == nil else { return }
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            if event.keyCode == 49 {
-                if let resp = event.window?.firstResponder,
-                   resp is NSText || resp is NSTextView {
+    private func installEventMonitors() {
+        if keyMonitor == nil {
+            keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                if event.keyCode == 53, let window = event.window, dropTextFocus(in: window) {
+                    return nil
+                }
+                if event.keyCode == 49 {
+                    if let resp = event.window?.firstResponder,
+                       resp is NSText || resp is NSTextView {
+                        return event
+                    }
+                    player.togglePlayPause()
+                    return nil
+                }
+                return event
+            }
+        }
+        if mouseMonitor == nil {
+            mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
+                guard let window = event.window,
+                      let resp = window.firstResponder,
+                      resp is NSText || resp is NSTextView else {
                     return event
                 }
-                player.togglePlayPause()
-                return nil
+                let hit = window.contentView?.hitTest(event.locationInWindow)
+                if !viewIsInsideTextEditor(hit) {
+                    window.makeFirstResponder(nil)
+                }
+                return event
             }
-            return event
         }
     }
 
-    private func removeKeyMonitor() {
-        if let m = keyMonitor {
-            NSEvent.removeMonitor(m)
-            keyMonitor = nil
+    private func removeEventMonitors() {
+        if let m = keyMonitor { NSEvent.removeMonitor(m); keyMonitor = nil }
+        if let m = mouseMonitor { NSEvent.removeMonitor(m); mouseMonitor = nil }
+    }
+
+    @discardableResult
+    private func dropTextFocus(in window: NSWindow) -> Bool {
+        guard let resp = window.firstResponder,
+              resp is NSText || resp is NSTextView else { return false }
+        window.makeFirstResponder(nil)
+        return true
+    }
+
+    private func viewIsInsideTextEditor(_ view: NSView?) -> Bool {
+        var v: NSView? = view
+        while let cur = v {
+            if cur is NSTextView || cur is NSText { return true }
+            v = cur.superview
         }
+        return false
     }
 }
 
@@ -109,8 +143,9 @@ struct SidebarView: View {
                             .foregroundColor(Theme.accent(scheme))
                     }
                 }
-                .frame(width: 32, height: 32)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .frame(width: 34, height: 34)
+                .squircleClip(radius: Theme.R.sm)
+                .squircleStroke(Theme.secondaryText(scheme).opacity(0.15), radius: Theme.R.sm)
 
                 Text("myTunes")
                     .font(.title3.bold())
@@ -138,18 +173,18 @@ struct SidebarView: View {
             .padding(.horizontal, 12)
 
             Button(action: { player.pickFolder() }) {
-                HStack {
+                HStack(spacing: 10) {
                     Image(systemName: "folder.badge.plus")
                     Text("Choose Folder")
+                        .fontWeight(.semibold)
                     Spacer()
                 }
                 .padding(.vertical, 11)
                 .padding(.horizontal, 14)
                 .foregroundColor(Theme.text(scheme))
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Theme.hover(scheme))
-                )
+                .squircle(Theme.hover(scheme), radius: Theme.R.md)
+                .squircleStroke(Theme.secondaryText(scheme).opacity(0.12), radius: Theme.R.md)
+                .contentShape(Squircle(radius: Theme.R.md))
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 16)
@@ -162,7 +197,7 @@ struct SidebarView: View {
                 Text("FOLDERS").font(.caption.bold())
                 Spacer()
                 if player.folderURL != nil {
-                    Button {
+                    ChromeButton(size: 24, radius: Theme.R.xs, scheme: scheme) {
                         newFolderParent = player.folderURL
                         newFolderName = ""
                         showNewFolder = true
@@ -170,7 +205,6 @@ struct SidebarView: View {
                         Image(systemName: "plus")
                             .font(.system(size: 11, weight: .bold))
                     }
-                    .buttonStyle(.plain)
                     .help("New folder at root")
                 }
             }
@@ -254,15 +288,14 @@ struct NavRow: View {
             HStack(spacing: 10) {
                 Image(systemName: icon).frame(width: 18)
                 Text(label)
+                    .fontWeight(isActive ? .semibold : .regular)
                 Spacer()
             }
             .padding(.vertical, 9)
             .padding(.horizontal, 12)
             .foregroundColor(isActive ? Theme.accent(scheme) : Theme.text(scheme))
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill((isActive || hover) ? Theme.hover(scheme) : Color.clear)
-            )
+            .squircle((isActive || hover) ? Theme.hover(scheme) : Color.clear, radius: Theme.R.md)
+            .contentShape(Squircle(radius: Theme.R.md))
         }
         .buttonStyle(.plain)
         .onHover { hover = $0 }
@@ -297,18 +330,15 @@ struct TreeNodeView: View {
 
                 Group {
                     if hasChildren {
-                        Button {
+                        ChromeButton(size: 18, radius: Theme.R.xs, scheme: scheme) {
                             toggleExpand()
                         } label: {
                             Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                                 .font(.system(size: 9, weight: .bold))
                                 .foregroundColor(Theme.secondaryText(scheme))
-                                .frame(width: 12, height: 12)
-                                .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
                     } else {
-                        Color.clear.frame(width: 12, height: 12)
+                        Color.clear.frame(width: 18, height: 18)
                     }
                 }
 
@@ -330,15 +360,9 @@ struct TreeNodeView: View {
             }
             .padding(.vertical, 5)
             .padding(.horizontal, 8)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(rowBackground)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(isTargeted ? Theme.accent(scheme) : Color.clear, lineWidth: 1.5)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .squircle(rowBackground, radius: Theme.R.md)
+            .squircleStroke(isTargeted ? Theme.accent(scheme) : Color.clear, lineWidth: 1.5, radius: Theme.R.md)
+            .contentShape(Squircle(radius: Theme.R.md))
             .onHover { hover = $0 }
             .onTapGesture { selectFolder() }
             .draggable(node.url)
@@ -473,9 +497,9 @@ struct SidebarSongRow: View {
     var body: some View {
         HStack(spacing: 8) {
             Color.clear.frame(width: CGFloat(depth) * 14, height: 1)
-            Color.clear.frame(width: 12, height: 12)
+            Color.clear.frame(width: 18, height: 18)
 
-            ArtworkView(image: song.artwork, size: 22)
+            ArtworkView(image: song.artwork, size: 24)
 
             Text(song.title)
                 .font(.system(size: 12, weight: isCurrent ? .semibold : .regular))
@@ -492,11 +516,8 @@ struct SidebarSongRow: View {
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(hover ? Theme.hover(scheme).opacity(0.6) : Color.clear)
-        )
-        .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .squircle(hover ? Theme.hover(scheme).opacity(0.6) : Color.clear, radius: Theme.R.md)
+        .contentShape(Squircle(radius: Theme.R.md))
         .onHover { hover = $0 }
         .onTapGesture(perform: onTap)
         .task(id: song.url) {
@@ -706,11 +727,8 @@ struct SongRow: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(hover ? Theme.hover(scheme) : Color.clear)
-        )
-        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .squircle(hover ? Theme.hover(scheme) : Color.clear, radius: Theme.R.lg)
+        .contentShape(Squircle(radius: Theme.R.lg))
         .onHover { hover = $0 }
         .onTapGesture(perform: onTap)
         .task(id: song.url) {
@@ -725,8 +743,9 @@ struct SearchBar: View {
     let scheme: ColorScheme
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
+                .font(.system(size: 14, weight: .medium))
                 .foregroundColor(Theme.secondaryText(scheme))
             TextField("Search all songs by title, artist, or album", text: $text)
                 .textFieldStyle(.plain)
@@ -734,25 +753,19 @@ struct SearchBar: View {
                 .foregroundColor(Theme.text(scheme))
                 .font(.system(size: 15))
             if !text.isEmpty {
-                Button {
+                ChromeButton(size: 22, radius: 11, scheme: scheme) {
                     text = ""
                 } label: {
                     Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 14))
                         .foregroundColor(Theme.secondaryText(scheme))
                 }
-                .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Theme.panel(scheme))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Theme.secondaryText(scheme).opacity(0.2), lineWidth: 1)
-        )
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .squircle(Theme.panel(scheme), radius: Theme.R.lg)
+        .squircleStroke(Theme.secondaryText(scheme).opacity(0.18), radius: Theme.R.lg)
     }
 }
 
@@ -781,8 +794,7 @@ struct SearchResultsView: View {
                     .foregroundColor(Theme.secondaryText(scheme))
                 Spacer()
                 Button("Close") { onDismiss() }
-                    .buttonStyle(.plain)
-                    .foregroundColor(Theme.accent(scheme))
+                    .buttonStyle(CapsulePillButtonStyle(variant: .accent, scheme: scheme))
             }
             .padding(.horizontal, 32)
             .padding(.bottom, 12)
@@ -853,12 +865,12 @@ struct QueueView: View {
                 }
                 Spacer()
                 if !player.playbackQueue.isEmpty {
-                    Button(role: .destructive) {
+                    Button {
                         player.clearQueue()
                     } label: {
                         Label("Clear Queue", systemImage: "trash")
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(SquircleButtonStyle(variant: .destructive, scheme: scheme))
                 }
             }
             .padding(.horizontal, 32)
@@ -963,25 +975,22 @@ struct PlayerBar: View {
             .frame(width: 260, alignment: .leading)
 
             VStack(spacing: 6) {
-                HStack(spacing: 28) {
-                    Button { player.previous() } label: {
+                HStack(spacing: 14) {
+                    ChromeButton(size: 36, radius: Theme.R.md, scheme: scheme) {
+                        player.previous()
+                    } label: {
                         Image(systemName: "backward.fill")
-                            .font(.title3)
-                            .foregroundColor(Theme.text(scheme))
-                    }.buttonStyle(.plain)
+                            .font(.system(size: 15, weight: .semibold))
+                    }
 
-                    Button { player.togglePlayPause() } label: {
-                        Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                            .resizable()
-                            .frame(width: 38, height: 38)
-                            .foregroundColor(Theme.accent(scheme))
-                    }.buttonStyle(.plain)
+                    PlayPauseButton(player: player, scheme: scheme)
 
-                    Button { player.next() } label: {
+                    ChromeButton(size: 36, radius: Theme.R.md, scheme: scheme) {
+                        player.next()
+                    } label: {
                         Image(systemName: "forward.fill")
-                            .font(.title3)
-                            .foregroundColor(Theme.text(scheme))
-                    }.buttonStyle(.plain)
+                            .font(.system(size: 15, weight: .semibold))
+                    }
                 }
 
                 HStack(spacing: 8) {
@@ -1024,14 +1033,51 @@ struct PlayerBar: View {
     }
 }
 
+struct PlayPauseButton: View {
+    @ObservedObject var player: MusicPlayer
+    let scheme: ColorScheme
+    @State private var hover = false
+    @State private var pressed = false
+
+    var body: some View {
+        Button {
+            player.togglePlayPause()
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(Theme.accent(scheme))
+                    .shadow(color: Theme.accent(scheme).opacity(hover ? 0.45 : 0.25),
+                            radius: hover ? 10 : 6, y: 2)
+                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(scheme == .dark ? Theme.navy : Theme.cream)
+                    .offset(x: player.isPlaying ? 0 : 1)
+            }
+            .frame(width: 44, height: 44)
+            .scaleEffect(pressed ? 0.93 : (hover ? 1.04 : 1))
+            .animation(.easeOut(duration: 0.12), value: hover)
+            .animation(.easeOut(duration: 0.1), value: pressed)
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in pressed = true }
+                .onEnded { _ in pressed = false }
+        )
+    }
+}
+
 struct ArtworkView: View {
     let image: NSImage?
     let size: CGFloat
 
     private var cornerRadius: CGFloat {
-        if size > 100 { return 22 }
-        if size > 40 { return 12 }
-        return 6
+        if size > 150 { return Theme.R.hero }
+        if size > 100 { return Theme.R.xxl }
+        if size > 40 { return Theme.R.md }
+        return Theme.R.xs
     }
 
     private var iconScale: CGFloat {
@@ -1055,7 +1101,7 @@ struct ArtworkView: View {
             }
         }
         .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .squircleClip(radius: cornerRadius)
     }
 }
 
@@ -1089,13 +1135,15 @@ struct SettingsView: View {
                                 .foregroundColor(Theme.secondaryText(scheme))
                         }
                         Spacer()
-                        Picker("", selection: $colorSchemeRaw) {
-                            Text("Dark").tag("dark")
-                            Text("Light").tag("light")
-                        }
-                        .pickerStyle(.segmented)
-                        .frame(width: 180)
-                        .labelsHidden()
+                        SquircleSegmented(
+                            selection: $colorSchemeRaw,
+                            options: [
+                                (value: "dark", label: "Dark", icon: "moon.fill"),
+                                (value: "light", label: "Light", icon: "sun.max.fill")
+                            ],
+                            scheme: scheme
+                        )
+                        .frame(width: 220)
                     }
                 }
 
@@ -1121,15 +1169,18 @@ struct SettingsView: View {
                         Button("Rescan Now") {
                             Task { await player.rescan() }
                         }
+                        .buttonStyle(SquircleButtonStyle(variant: .prominent, scheme: scheme))
                         .disabled(player.folderURL == nil)
 
                         Button("Choose Different Folder") {
                             player.pickFolder()
                         }
+                        .buttonStyle(SquircleButtonStyle(variant: .tinted, scheme: scheme))
 
                         Button("Forget Library") {
                             player.forgetLibrary()
                         }
+                        .buttonStyle(SquircleButtonStyle(variant: .tinted, scheme: scheme))
                         .disabled(player.folderURL == nil)
                     }
                 }
@@ -1164,9 +1215,11 @@ struct SettingsView: View {
                         Button("Apply Now") {
                             player.volume = Float(defaultVolume)
                         }
+                        .buttonStyle(SquircleButtonStyle(variant: .prominent, scheme: scheme))
                         Button("Save Current as Default") {
                             defaultVolume = Double(player.volume)
                         }
+                        .buttonStyle(SquircleButtonStyle(variant: .tinted, scheme: scheme))
                     }
                 }
 
@@ -1220,10 +1273,8 @@ struct SettingsView: View {
             }
             .padding(22)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(Theme.panel(scheme))
-            )
+            .squircle(Theme.panel(scheme), radius: Theme.R.xxl)
+            .squircleStroke(Theme.divider(scheme), radius: Theme.R.xxl)
         }
     }
 
