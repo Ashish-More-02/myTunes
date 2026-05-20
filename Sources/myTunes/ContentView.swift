@@ -57,7 +57,7 @@ struct ContentView: View {
         }
         .background(Theme.background(scheme))
         .preferredColorScheme(scheme)
-        .frame(minWidth: 1040, minHeight: 700)
+        .frame(minWidth: 1200, minHeight: 820)
         .onAppear { installKeyMonitor() }
         .onDisappear { removeKeyMonitor() }
     }
