@@ -58,7 +58,7 @@ struct ContentView: View {
         }
         .background(Theme.background(scheme))
         .preferredColorScheme(scheme)
-        .frame(minWidth: 1200, minHeight: 820)
+        .frame(minWidth: 1200, minHeight: 738)
         .onAppear { installEventMonitors() }
         .onDisappear { removeEventMonitors() }
     }
